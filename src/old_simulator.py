@@ -1,6 +1,3 @@
-# from NanoSim original repository main branch (Dec 7, 2022)
-# todo: remove this file
-
 #!/usr/bin/env python
 """
 @author: Chen Yang, Saber Hafezqorani, Ka Ming Nip, and Theodora Lo

@@ -336,14 +336,14 @@ def read_profile(ref_g, number_list, model_prefix, perfect, mode, strandness, re
                                 max_chrom[species] = seq_len[species][chr_name.split(".")[0]]
             else:
                 with open(fq_path, 'r') as infile:
-                    for seqN, seqS, seqQ in readfq(infile):
+                    for seqN, seq, seq_quality in readfq(infile):
                         info = re.split(r'[_\s]\s*', seqN)
                         chr_name = "-".join(info)
-                        seq_dict[species][chr_name.split(".")[0]] = seqS
-                        seq_len[species][chr_name.split(".")[0]] = len(seqS)
+                        seq_dict[species][chr_name.split(".")[0]] = seq
+                        seq_len[species][chr_name.split(".")[0]] = len(seq)
                         dict_dna_type[species][chr_name.split(".")[0]] = "circular"  # circular as default
-                        if len(seqS) > max_chrom[species]:
-                            max_chrom[species] = len(seqS)
+                        if len(seq) > max_chrom[species]:
+                            max_chrom[species] = len(seq)
 
         if dna_type:  # dna_type is not required when streaming reference genome from RefSeq
             with open(dna_type, 'r') as dna_type_list:
@@ -361,13 +361,12 @@ def read_profile(ref_g, number_list, model_prefix, perfect, mode, strandness, re
     else:
         max_chrom = 0 # length of largest chromosome
         with open(ref, 'r') as infile:
-            # extract chromosome name from sequence name (seqN), sequence (seqS)
-            for seqN, seqS, seqQ in readfq(infile):
-                chr_name = normalize_seq_name(seqN)
-                seq_dict[chr_name] = seqS
-                seq_len[chr_name] = len(seqS)
-                if len(seqS) > max_chrom:
-                    max_chrom = len(seqS)
+            for seq_name, seq, seq_quality in readfq(infile):
+                seq_name = normalize_seq_name(seq_name)
+                seq_dict[seq_name] = seq
+                seq_len[seq_name] = len(seq)
+                if len(seq) > max_chrom:
+                    max_chrom = len(seq)
 
     # Special files for each mode
     if mode == "genome":
@@ -1233,43 +1232,44 @@ def simulation_aligned_genome(dna_type, min_l, max_l, median_l, sd_l, out_reads,
 
     id_begin = '@' if fastq else '>'
 
-    remaining_reads = num_simulate
-    passed = 0 # number of generated reads so far
-    while remaining_reads > 0:
-        # each read is made up of segments with gaps in between
-        if chimeric:
-            num_segments = np.random.geometric(1/segment_mean, remaining_reads) # number of segments per read
-        else:
-            num_segments = np.ones(remaining_reads, dtype=int)
-        segments_per_read = num_segments # array: for each read, number of segments
-        gaps_per_read = segments_per_read - 1 # we have # gaps = # segments - 1
+    # each read is made up of segments with gaps in between
+    if chimeric:
+        num_segments_per_read = np.random.geometric(1/segment_mean, num_simulate) # number of segments per read
+    else:
+        num_segments_per_read = np.ones(num_remaining, dtype=int)
+    num_remaining = num_simulate # number of reads not yet generated
+    
+    while num_remaining > 0:
+        # for remaining reads: number of segments and number of gaps (gaps = segments - 1)
+        rem_num_segments_per_read = num_segments_per_read[-num_remaining:]
+        rem_num_gaps_per_read = rem_num_segments_per_read - 1
 
         # here, we sample the segment lengths and gap lengths (over all reads) and keep increasing pointers to move to the next length
         if perfect:
-            ref_lengths = get_length_kde(kde_aligned, sum(segments_per_read)) if median_l is None else \
-                np.random.lognormal(np.log(median_l), sd_l, segments_per_read) # todo3: should be sum(remaining_segments)
+            ref_lengths = get_length_kde(kde_aligned, sum(rem_num_segments_per_read)) if median_l is None else \
+                np.random.lognormal(np.log(median_l), sd_l, rem_num_segments_per_read) # todo3: should be sum(remaining_segments)
             ref_lengths = [x for x in ref_lengths if min_l <= x <= max_l]
         else:
-            flanking_lengths = get_length_kde(kde_ht, int(remaining_reads * 1.3), True) # generate more to have enough >= 0
+            flanking_lengths = get_length_kde(kde_ht, int(num_remaining * 1.3), True) # generate more to have enough >= 0
             flanking_lengths = [x for x in flanking_lengths if x >= 0]
-            head_vs_tail_ratio_list = get_length_kde(kde_ht_ratio, int(remaining_reads * 1.5)) # generate more to have enough in [0, 1]
+            head_vs_tail_ratio_list = get_length_kde(kde_ht_ratio, int(num_remaining * 1.5)) # generate more to have enough in [0, 1]
             head_vs_tail_ratio_list = [x for x in head_vs_tail_ratio_list if 0 <= x <= 1]
             if median_l is None:
-                ref_lengths = get_length_kde(kde_aligned, sum(segments_per_read))
+                ref_lengths = get_length_kde(kde_aligned, sum(rem_num_segments_per_read))
             else:
-                total_lengths = np.random.lognormal(np.log(median_l + sd_l ** 2 / 2), sd_l, remaining_reads)
-                num_current_loop = min(remaining_reads, len(flanking_lengths), len(head_vs_tail_ratio_list))
+                total_lengths = np.random.lognormal(np.log(median_l + sd_l ** 2 / 2), sd_l, num_remaining)
+                num_current_loop = min(num_remaining, len(flanking_lengths), len(head_vs_tail_ratio_list))
                 ref_lengths = total_lengths[:num_current_loop] - flanking_lengths[:num_current_loop]
             ref_lengths = [x for x in ref_lengths if 0 < x <= max_l]
 
-        gap_lengths = get_length_kde(kde_gap, sum(gaps_per_read), True) if sum(gaps_per_read) > 0 else []
+        gap_lengths = get_length_kde(kde_gap, sum(rem_num_gaps_per_read), True) if sum(rem_num_gaps_per_read) > 0 else []
         gap_lengths = [max(0, int(x)) for x in gap_lengths]
 
         seg_pointer = 0
         gap_pointer = 0
-        for i in xrange(remaining_reads):
+        for i in xrange(num_remaining):
             # check if the total length fits the criteria
-            segments = segments_per_read[i]
+            segments = rem_num_segments_per_read[i]
             # In case too many ref lengths were filtered previously
             if seg_pointer + segments > len(ref_lengths):
                 break
@@ -1298,7 +1298,7 @@ def simulation_aligned_genome(dna_type, min_l, max_l, median_l, sd_l, out_reads,
                     if fastq:
                         base_quals.extend(mm.trunc_lognorm_rvs("match", read_type, basecaller, length).tolist())
 
-                new_read_name = new_read_name + "_perfect_" + sequ_idx_prefix + str(passed)
+                new_read_name = new_read_name + "_perfect_" + sequ_idx_prefix + str(num_simulate - num_remaining)
                 read_mutated = case_convert(new_read)  # not mutated actually, just to be consistent with perfect == False
 
                 head = 0
@@ -1361,7 +1361,7 @@ def simulation_aligned_genome(dna_type, min_l, max_l, median_l, sd_l, out_reads,
                 for seg_idx in range(num_seg):
                     length = seg_length_list[seg_idx]
                     new_seg_list[seg_idx], read_name_components[seg_idx] = extract_read(dna_type, length)
-                new_read_name = ';'.join(read_name_components) + "_aligned_" + sequ_idx_prefix + str(passed)
+                new_read_name = ';'.join(read_name_components) + "_aligned_" + sequ_idx_prefix + str(num_simulate - num_remaining)
                 
                 if num_seg > 1:
                     new_read_name += "_chimeric"
@@ -1415,12 +1415,9 @@ def simulation_aligned_genome(dna_type, min_l, max_l, median_l, sd_l, out_reads,
 
             check_print_progress(total_nb_reads)
 
-            passed += 1
+            num_remaining -= 1
 
-        remaining_reads = num_simulate - passed
-        segments_per_read = num_segments[passed:]
-        gaps_per_read = segments_per_read - 1
-
+        
     out_reads.close()
     out_error.close()
 
@@ -1552,7 +1549,7 @@ def simulation(mode, out, dna_type, perfect, kmer_bias, basecaller, read_type, m
         if mode == "genome":
             p = mp.Process(target=simulation_aligned_genome,
                            args=(dna_type, min_l, max_l, median_l, sd_l, aligned_subfile, error_subfile,
-                                 kmer_bias, basecaller, read_type, fastq, num_simulate, str(seed)+":", perfect, chimeric, no_flanking, no_coverage, seed))
+                                 kmer_bias, basecaller, read_type, fastq, num_simulate, str(i)+":", perfect, chimeric, no_flanking))
             procs.append(p)
             p.start()
 
@@ -1650,43 +1647,43 @@ def extract_read(dna_type, length, s=None):
     if dna_type == "transcriptome":
         # first sample transcript, then sample position within transcript
         while True:
-            chromosome = random.choice(list(seq_len.keys()))  # added "list" thing to be compatible with Python v3
-            if length < seq_len[chromosome]:
-                ref_pos = random.randint(0, seq_len[chromosome] - length)
-                new_read = seq_dict[chromosome][ref_pos: ref_pos + length]
-                new_read_name = chromosome + "_" + str(ref_pos)
+            seq_name = random.choice(list(seq_len.keys()))  # added "list" thing to be compatible with Python v3
+            if length < seq_len[seq_name]:
+                ref_pos = random.randint(0, seq_len[seq_name] - length)
+                new_read = seq_dict[seq_name][ref_pos: ref_pos + length]
+                new_read_name = seq_name + "_" + str(ref_pos)
                 break
         return new_read, new_read_name
     elif dna_type == "metagenome":
         while True:
             if not s or length > max(seq_len[s].values()):  # if the length is too long, change to a different species
                 s = random.choice(list(seq_len.keys()))  # added "list" thing to be compatible with Python v3
-            chromosome = random.choice(list(seq_len[s].keys()))
-            if length < seq_len[s][chromosome]:
-                if dict_dna_type[s][chromosome] == "circular":
-                    ref_pos = random.randint(0, seq_len[s][chromosome])
-                    if length + ref_pos > seq_len[s][chromosome]:
-                        new_read = seq_dict[s][chromosome][ref_pos:]
-                        new_read = new_read + seq_dict[s][chromosome][0: length - seq_len[s][chromosome] + ref_pos]
+            seq_name = random.choice(list(seq_len[s].keys()))
+            if length < seq_len[s][seq_name]:
+                if dict_dna_type[s][seq_name] == "circular":
+                    ref_pos = random.randint(0, seq_len[s][seq_name])
+                    if length + ref_pos > seq_len[s][seq_name]:
+                        new_read = seq_dict[s][seq_name][ref_pos:]
+                        new_read = new_read + seq_dict[s][seq_name][0: length - seq_len[s][seq_name] + ref_pos]
                     else:
-                        new_read = seq_dict[s][chromosome][ref_pos: ref_pos + length]
+                        new_read = seq_dict[s][seq_name][ref_pos: ref_pos + length]
                 else:
-                    ref_pos = random.randint(0, seq_len[s][chromosome] - length)
-                    new_read = seq_dict[s][chromosome][ref_pos: ref_pos + length]
-                new_read_name = s + '-' + chromosome + "_" + str(ref_pos)
+                    ref_pos = random.randint(0, seq_len[s][seq_name] - length)
+                    new_read = seq_dict[s][seq_name][ref_pos: ref_pos + length]
+                new_read_name = s + '-' + seq_name + "_" + str(ref_pos)
                 break
         return new_read, new_read_name
     else:
         # Extract the aligned region from reference
         if dna_type == "circular":
             ref_pos = random.randint(0, genome_len)
-            chromosome = list(seq_dict.keys())[0]
-            new_read_name = chromosome + "_" + str(ref_pos)
+            seq_name = list(seq_dict.keys())[0]
+            new_read_name = seq_name + "_" + str(ref_pos)
             if length + ref_pos <= genome_len:
-                new_read = seq_dict[chromosome][ref_pos: ref_pos + length]
+                new_read = seq_dict[seq_name][ref_pos: ref_pos + length]
             else:
-                new_read = seq_dict[chromosome][ref_pos:]
-                new_read = new_read + seq_dict[chromosome][0: length - genome_len + ref_pos]
+                new_read = seq_dict[seq_name][ref_pos:]
+                new_read = new_read + seq_dict[seq_name][0: length - genome_len + ref_pos]
         else:
             # Generate a random number within the size of the genome. Suppose chromosomes are connected
             # tail to head one by one in the order of the dictionary. If the start position fits in one
@@ -1698,17 +1695,17 @@ def extract_read(dna_type, length, s=None):
                 #todo3: this can be optimized to O(log n) instead of O(n) to avoid the for-loop by caching the cumulative lengths
                 new_read = ""
                 ref_pos = random.randint(0, genome_len) # final ref_pos is with respect to chromosome
-                for chromosome in seq_len:
-                    if ref_pos + length <= seq_len[chromosome]:
-                        new_read = seq_dict[chromosome][ref_pos: ref_pos + length]
-                        new_read_name = chromosome + "_" + str(ref_pos)
+                for seq_name in seq_len:
+                    if ref_pos + length <= seq_len[seq_name]:
+                        new_read = seq_dict[seq_name][ref_pos: ref_pos + length]
+                        new_read_name = seq_name + "_" + str(ref_pos)
                         break
-                    elif ref_pos < seq_len[chromosome]:
+                    elif ref_pos < seq_len[seq_name]:
                         # does not fit into chromosome -> sample a new start position
                         break
                     else:
                         # go to next chromosome
-                        ref_pos -= seq_len[chromosome]
+                        ref_pos -= seq_len[seq_name]
                 if new_read != "":
                     break
         return new_read, new_read_name
@@ -2170,7 +2167,7 @@ def main(commandline_args=sys.argv[1:]):
             sys.exit(1)
 
         if aligned_rate and not (aligned_rate == "100%" or aligned_rate >= 0):
-            print("\nPlease input proper aligned rate\n")
+            print("\nPlease input proper alignment rate\n")
             parser_g.print_help(sys.stderr)
             sys.exit(1)
 
@@ -2466,7 +2463,7 @@ def main(commandline_args=sys.argv[1:]):
 
 if __name__ == "__main__":
 
-    #todo3
+    #todo3: remove
 
     # BASE_PATH = "/Users/maximilianmordig/Desktop/sequencing/readfish_modified/coverage_predictor/"
     # args=["genome", "-rg", BASE_PATH+"GCF_000001405.40_GRCh38.p14_genomic_reduced.fna", "-c", BASE_PATH+"human_NA12878_DNA_FAB49712_guppy/training", "-o", BASE_PATH+"simulated_reads/simulated", "-n", "1000", "-max", "10000", "--seed", "1", "-b", "guppy", "-dna_type", "linear", "-t", "4",]
