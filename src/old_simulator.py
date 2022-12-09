@@ -2397,3 +2397,14 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
+    # #todo3: remove
+    # BASE_PATH = "/Users/maximilianmordig/Desktop/sequencing/readfish_modified/coverage_predictor/"
+    # # args=["genome", "-rg", BASE_PATH+"GCF_000001405.40_GRCh38.p14_genomic_reduced.fna", "-c", BASE_PATH+"human_NA12878_DNA_FAB49712_guppy/training", "-o", BASE_PATH+"simulated_reads/simulated", "-n", "1000", "-max", "10000", "--seed", "1", "-b", "guppy", "-dna_type", "linear", "-t", "4",]
+    # # args += ["--perfect"]
+    # # main(command_args=args)
+    # os.chdir(BASE_PATH)
+    # sys.argv = ["dummy", "metagenome", "-gl", "metagenome_sim_configs/metagenome_list_for_simulation", "-a", "metagenome_sim_configs/abundance_for_simulation_multi_sample.tsv", "-dl", "metagenome_sim_configs/dna_type_list.tsv", "-c", "metagenome_ERR3152366_Log/training", "-o", "simulated_metagenomic_reads/noflanking_new_reads", "-max", "1000", "--seed", "2", "-b", "guppy", "--strandness", "0.5", "-t", "4"]
+    # main()
+    # import warnings
+    # warnings.warn("Overwriting command line params!!!!")

@@ -107,7 +107,7 @@ def simulation_aligned_genome(dna_type, min_l, max_l, median_l, sd_l, out_reads,
                     mutated_gap, gap_base_quals = simulation_gap(each_gap, basecaller, read_type, dna_type, fastq)
                     gap_list.append(mutated_gap)
                     gap_base_qual_list.append(gap_base_quals)
-                    
+                    #todo10: why not here?
                 for each_ref in ref_length_list:
                     middle, middle_ref, error_dict, error_count = \
                         error_list(each_ref, match_markov_model, match_ht_list, error_par, trans_error_pr, fastq)
