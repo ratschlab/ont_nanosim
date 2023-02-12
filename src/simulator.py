@@ -62,7 +62,7 @@ BASES = ['A', 'T', 'C', 'G']
 
 def check_print_progress(total_nb_reads):
     if total_nb_reads % 10000 == 0:
-        sys.stdout.write(strftime("%Y-%m-%d %H:%M:%S") + ": Number of reads simulated >> " +
+        sys.stdout.write(strftime("%Y-%m-%d %H:%M:%S") + ": Number of reads simulated >= " +
                          str(total_nb_reads + 1) + "\r")
         sys.stdout.flush()
 
@@ -284,7 +284,7 @@ def read_profile(ref_g, number_list, model_prefix, perfect, mode, strandness, re
             for genome in list:
                 fields = genome.split("\t")
                 species = fields[0]
-                species = '_'.join(species.split())
+                species = normalize_seq_name(species) # don't join with underscore as underscore is the field delimiter
                 genome = fields[1].strip("\n")
                 ref[species] = genome
     else:
@@ -752,6 +752,7 @@ def assign_species(length_list, num_segments_list, current_species_nb_base_dict)
     length_list_sorted = length_list[:num_segs_chimera] + sorted(length_list[num_segs_chimera:], reverse=True)
     
     species_list = [''] * len(length_list)
+    
     bases_to_add = sum(length_list)
     current_bases = sum(current_species_nb_base_dict.values()) # number of generated bases already
     total_bases = bases_to_add + current_bases # across all species
@@ -1585,18 +1586,19 @@ def simulation(mode, out, dna_type, perfect, kmer_bias, basecaller, read_type, m
             num_simulate += number_aligned % num_threads
 
         seed += 1
+        seq_idx_prefix = "proc" + str(i) + ":"
         
         if mode == "genome":
             p = mp.Process(target=simulation_aligned_genome,
                            args=(dna_type, min_l, max_l, median_l, sd_l, aligned_subfile, error_subfile,
-                                 kmer_bias, basecaller, read_type, fastq, seed, num_simulate, str(i)+":", perfect, chimeric, no_flanking))
+                                 kmer_bias, basecaller, read_type, fastq, seed, num_simulate, seq_idx_prefix, perfect, chimeric, no_flanking))
             procs.append(p)
             p.start()
 
         elif mode == "metagenome":
             p = mp.Process(target=simulation_aligned_metagenome,
                            args=(min_l, max_l, median_l, sd_l, aligned_subfile, error_subfile, kmer_bias,
-                                 basecaller, read_type, fastq, seed, num_simulate, str(i)+":", perfect, chimeric, no_flanking))
+                                 basecaller, read_type, fastq, seed, num_simulate, seq_idx_prefix, perfect, chimeric, no_flanking))
             procs.append(p)
             p.start()
 
@@ -2166,12 +2168,13 @@ def main(command_args=sys.argv[1:]):
                            default=1)
     
     
-    args = parser.parse_args(command_args)
-    print(args.mode) #todo3
-    
     if len(command_args) == 0:
         parser.print_help(sys.stderr)
         sys.exit(1)
+
+    args = parser.parse_args(command_args)
+    print(args.mode) #todo3
+    
 
     seed = random.randrange(sys.maxsize) if args.seed is None else int(args.seed)
     set_seed(seed)
@@ -2526,19 +2529,18 @@ def main(command_args=sys.argv[1:]):
 
 
 if __name__ == "__main__":
+    main()
+    
+    # #todo3: remove
 
-    #todo3: remove
-
-    BASE_PATH = "/Users/maximilianmordig/Desktop/sequencing/readfish_modified/coverage_predictor/"
-    # args=["genome", "-rg", BASE_PATH+"GCF_000001405.40_GRCh38.p14_genomic_reduced.fna", "-c", BASE_PATH+"human_NA12878_DNA_FAB49712_guppy/training", "-o", BASE_PATH+"simulated_reads/simulated", "-n", "1000", "-max", "10000", "--seed", "1", "-b", "guppy", "-dna_type", "linear", "-t", "4",]
-    # args += ["--perfect"]
+    # BASE_PATH = "/Users/maximilianmordig/Desktop/sequencing/readfish_modified/coverage_predictor/"
+    # # args=["genome", "-rg", BASE_PATH+"GCF_000001405.40_GRCh38.p14_genomic_reduced.fna", "-c", BASE_PATH+"human_NA12878_DNA_FAB49712_guppy/training", "-o", BASE_PATH+"simulated_reads/simulated", "-n", "1000", "-max", "10000", "--seed", "1", "-b", "guppy", "-dna_type", "linear", "-t", "4",]
+    # # args += ["--perfect"]
+    # # main(command_args=args)
+    # os.chdir(BASE_PATH)
+    # args = ["metagenome", "-gl", "metagenome_sim_configs/metagenome_list_for_simulation", "-a", "metagenome_sim_configs/abundance_for_simulation_multi_sample.tsv", "-dl", "metagenome_sim_configs/dna_type_list.tsv", "-c", "metagenome_ERR3152366_Log/training", "-o", "simulated_metagenomic_reads/noflanking_new_reads", "-max", "9000", "--seed", "2", "-b", "guppy", "--strandness", "0.5", "-t", "4", "--aligned_rate", "100%"]
+    # args += ["--chimeric"]
     # main(command_args=args)
-    os.chdir(BASE_PATH)
-    args = ["metagenome", "-gl", "metagenome_sim_configs/metagenome_list_for_simulation", "-a", "metagenome_sim_configs/abundance_for_simulation_multi_sample.tsv", "-dl", "metagenome_sim_configs/dna_type_list.tsv", "-c", "metagenome_ERR3152366_Log/training", "-o", "simulated_metagenomic_reads/noflanking_new_reads", "-max", "9000", "--seed", "2", "-b", "guppy", "--strandness", "0.5", "-t", "4", "--aligned_rate", "100%"]
-    args += ["--chimeric"]
-    main(command_args=args)
-    import warnings
-    warnings.warn("Overwriting command line params!!!!")
-
-    # main()
+    # import warnings
+    # warnings.warn("Overwriting command line params!!!!")
 
