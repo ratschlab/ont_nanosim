@@ -1,0 +1,1 @@
+Use `git config --add oh-my-zsh.hide-dirty 1` to make directory listings faster.
