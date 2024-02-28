@@ -888,7 +888,8 @@ def simulation_aligned_metagenome(min_l, max_l, median_l, sd_l, out_reads, out_e
         # here, we sample the segment lengths and gap lengths (over all reads) and keep increasing pointers to move to the next length
         if perfect:
             ref_lengths = get_length_kde(kde_aligned, num_remaining_segments) if median_l is None else \
-                np.random.lognormal(np.log(median_l), sd_l, num_remaining_segments)
+                np.random.uniform(median_l - sd_l, median_l + sd_l, num_remaining_segments)
+                # np.random.lognormal(np.log(median_l), sd_l, num_remaining_segments)
             # single segment per perfect read
             ref_lengths = [x for x in ref_lengths if min_l <= x <= max_l]
         else:
@@ -901,7 +902,8 @@ def simulation_aligned_metagenome(min_l, max_l, median_l, sd_l, out_reads, out_e
             else:
                 assert not chimeric, "median_l not compatible with chimeric"
                 # i.e. each read has exactly 1 segment
-                total_lengths = np.random.lognormal(np.log(median_l + sd_l ** 2 / 2), sd_l, num_remaining)
+                # total_lengths = np.random.lognormal(np.log(median_l + sd_l ** 2 / 2), sd_l, num_remaining)
+                total_lengths = np.random.uniform(median_l - sd_l, median_l + sd_l, num_remaining)
                 num_current_loop = min(len(total_lengths), len(flanking_lengths))
                 ref_lengths = total_lengths[:num_current_loop] - flanking_lengths[:num_current_loop]
             # good approximation to have reads of length <= max_l, ignoring that some longer reads may get shorter due to deletions
@@ -1336,8 +1338,10 @@ def simulation_aligned_genome(dna_type, min_l, max_l, median_l, sd_l, out_reads,
         num_remaining_segments = sum(rem_num_segments_per_read)
         # here, we sample the segment lengths and gap lengths (over all reads) and keep increasing pointers to move to the next length
         if perfect:
+            # uniform distribution as rough approximation because below truncated lognormal does not work (median of distribution is totally off, e.g. 2500 instead of 15000)
             ref_lengths = get_length_kde(kde_aligned, num_remaining_segments) if median_l is None else \
-                np.random.lognormal(np.log(median_l), sd_l, num_remaining_segments)
+                np.random.uniform(median_l - sd_l, median_l + sd_l, num_remaining_segments)
+                # np.random.lognormal(np.log(median_l), sd_l, num_remaining_segments)
             # single segment per perfect read
             ref_lengths = [x for x in ref_lengths if min_l <= x <= max_l]
         else:
@@ -1350,7 +1354,8 @@ def simulation_aligned_genome(dna_type, min_l, max_l, median_l, sd_l, out_reads,
             else:
                 assert not chimeric, "median_l not compatible with chimeric"
                 # i.e. each read has exactly 1 segment
-                total_lengths = np.random.lognormal(np.log(median_l + sd_l ** 2 / 2), sd_l, num_remaining)
+                # total_lengths = np.random.lognormal(np.log(median_l + sd_l ** 2 / 2), sd_l, num_remaining)
+                total_lengths = np.random.uniform(median_l - sd_l, median_l + sd_l, num_remaining)
                 num_current_loop = min(len(total_lengths), len(flanking_lengths))
                 ref_lengths = total_lengths[:num_current_loop] - flanking_lengths[:num_current_loop]
             # good approximation to have reads of length <= max_l, ignoring that some longer reads may get shorter due to deletions
@@ -1538,7 +1543,8 @@ def simulation_unaligned(dna_type, min_l, max_l, median_l, sd_l, out_reads, base
     while remaining_reads > 0:
         # if the median length and sd is set, use log normal distribution for simulation
         ref_l = get_length_kde(kde_unaligned, remaining_reads) if median_l is None else \
-            np.random.lognormal(np.log(median_l), sd_l, remaining_reads)
+            np.random.uniform(median_l - sd_l, median_l + sd_l, remaining_reads)
+            # np.random.lognormal(np.log(median_l), sd_l, remaining_reads)
 
         for j in xrange(len(ref_l)):
             # check if the total length fits the criteria
@@ -2106,7 +2112,7 @@ def main(command_args=sys.argv[1:]):
     parser_g.add_argument('-med', '--median_len', help='The median read length (Default = None), Note: this parameter '
                                                        'is not compatible with chimeric reads simulation',
                           type=int, default=None)
-    parser_g.add_argument('-sd', '--sd_len', help='The standard deviation of read length in log scale (Default = None),'
+    parser_g.add_argument('-sd', '--sd_len', help='The standard deviation of read length in normal scale (Default = None),'
                                                   ' Note: this parameter is not compatible with chimeric reads '
                                                   'simulation', type=float, default=None)
     parser_g.add_argument('--seed', help='Manually seeds the pseudo-random number generator', type=int, default=None)
@@ -2296,7 +2302,7 @@ def main(command_args=sys.argv[1:]):
             sys.exit(1)
 
         if median_len and sd_len and chimeric:
-            sys.stderr.write("\nLognormal distributed reads cannot be chimeric!\n")
+            sys.stderr.write("\nuniformly distributed reads cannot be chimeric!\n")
             parser_g.print_help(sys.stderr)
             sys.exit(1)
 
@@ -2510,7 +2516,7 @@ def main(command_args=sys.argv[1:]):
             sys.exit(1)
 
         if median_len and sd_len and chimeric:
-            sys.stderr.write("\nLognormal distributed reads cannot be chimeric!\n")
+            sys.stderr.write("\nuniformly distributed reads cannot be chimeric!\n")
             parser_g.print_help(sys.stderr)
             sys.exit(1)
 
@@ -2585,7 +2591,7 @@ def main(command_args=sys.argv[1:]):
             sys.stdout.flush()
             if median_len and sd_len:
                 sys.stdout.write(
-                    strftime("%Y-%m-%d %H:%M:%S") + ": Simulating read length from log-normal distribution\n")
+                    strftime("%Y-%m-%d %H:%M:%S") + ": Simulating read length from uniform distribution\n")
                 sys.stdout.flush()
 
             number_aligned = number_aligned_l[i]
