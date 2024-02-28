@@ -25,6 +25,13 @@ from subprocess import call
 from textwrap import dedent
 import sys
 import os
+
+try:
+    from tqdm import tqdm
+except ImportError:
+    # do nothing
+    tqdm = lambda x: x
+    
 import HTSeq
 import pysam
 import random
@@ -62,7 +69,7 @@ BASES = ['A', 'T', 'C', 'G']
 
 
 def check_print_progress(total_nb_reads):
-    if total_nb_reads % 10000 == 0:
+    if total_nb_reads % 100 == 0:
         sys.stdout.write(strftime("%Y-%m-%d %H:%M:%S") + ": Number of reads simulated >= " +
                          str(total_nb_reads + 1) + "\r")
         sys.stdout.flush()
@@ -106,6 +113,7 @@ def merge_files(in_files, out_file, delete_in_files=True, mode="w"):
             with open(f_in_name, "r") as f_in:
                 for line in f_in:
                     out_f.write(line)
+    print(f"Merged file is '{out_file}'")
     if delete_in_files:
         for f_in_name in in_files:
             os.remove(f_in_name)
@@ -412,7 +420,7 @@ def read_profile(ref_g, number_list, model_prefix, perfect, mode, strandness, re
     else:
         max_chrom = 0 # length of largest chromosome
         with open_normal_or_gz_read(ref) as infile:
-            for seq_name, seq, seq_quality in readfq(infile):
+            for seq_name, seq, seq_quality in tqdm(readfq(infile)):
                 seq_name = normalize_seq_name(seq_name)
                 seq_dict[seq_name] = seq
                 seq_len[seq_name] = len(seq)
@@ -898,7 +906,7 @@ def simulation_aligned_metagenome(min_l, max_l, median_l, sd_l, out_reads, out_e
                 ref_lengths = total_lengths[:num_current_loop] - flanking_lengths[:num_current_loop]
             # good approximation to have reads of length <= max_l, ignoring that some longer reads may get shorter due to deletions
             # also correct for chimeric reads
-            ref_lengths = [x for x in ref_lengths if 0 < x <= max_l]
+            ref_lengths = [x for x in ref_lengths if 1 <= x <= max_l]
         del num_remaining_segments
         
         gap_lengths = get_length_kde(kde_gap, sum(rem_num_gaps_per_read), True) if sum(rem_num_gaps_per_read) > 0 else []
@@ -1347,7 +1355,7 @@ def simulation_aligned_genome(dna_type, min_l, max_l, median_l, sd_l, out_reads,
                 ref_lengths = total_lengths[:num_current_loop] - flanking_lengths[:num_current_loop]
             # good approximation to have reads of length <= max_l, ignoring that some longer reads may get shorter due to deletions
             # also correct for chimeric reads
-            ref_lengths = [x for x in ref_lengths if 0 < x <= max_l]
+            ref_lengths = [x for x in ref_lengths if 1 <= x <= max_l]
         del num_remaining_segments
 
         gap_lengths = get_length_kde(kde_gap, sum(rem_num_gaps_per_read), True) if sum(rem_num_gaps_per_read) > 0 else []
@@ -1789,6 +1797,7 @@ def extract_read(dna_type, length, species=None):
             while True:
                 #todo3: this can be optimized to O(log n) instead of O(n) to avoid the for-loop by caching the cumulative lengths
                 new_read = ""
+                assert length > 0, "length must be positive" # otherwise new_read="", so infinite loop
                 ref_pos = random.randint(0, genome_len) # final ref_pos is with respect to chromosome
                 for seq_name in seq_len:
                     if ref_pos + length <= seq_len[seq_name]:
