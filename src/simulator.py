@@ -1529,7 +1529,7 @@ def simulation_aligned_genome(dna_type, min_l, max_l, median_l, sd_l, out_reads,
 
 
 def simulation_unaligned(dna_type, min_l, max_l, median_l, sd_l, out_reads, basecaller, read_type, fastq,
-                         seed, num_simulate, uracil):
+                         seed, num_simulate, sequ_idx_prefix, uracil):
     set_seed(seed)
     out_reads = open(out_reads, "w")
 
@@ -1539,7 +1539,6 @@ def simulation_unaligned(dna_type, min_l, max_l, median_l, sd_l, out_reads, base
         id_begin = ">"
 
     remaining_reads = num_simulate
-    passed = 0
     while remaining_reads > 0:
         # if the median length and sd is set, use log normal distribution for simulation
         ref_l = get_length_kde(kde_unaligned, remaining_reads) if median_l is None else \
@@ -1556,11 +1555,12 @@ def simulation_unaligned(dna_type, min_l, max_l, median_l, sd_l, out_reads, base
                 continue
 
             with total_simulated.get_lock():
-                sequence_index = total_simulated.value
+                # total across all threads
+                total_nb_reads = total_simulated.value
                 total_simulated.value += 1
 
             new_read, new_read_name = extract_read(dna_type, middle_ref)
-            new_read_name = new_read_name + "_unaligned_" + str(sequence_index)
+            new_read_name = new_read_name + "_unaligned_" + sequ_idx_prefix + str(num_simulate - remaining_reads)
             # Change lowercase to uppercase and replace N with any base
             new_read = case_convert(new_read)
             # no quals returned here since unaligned quals are not based on mis/ins/match qual distributions
@@ -1581,9 +1581,9 @@ def simulation_unaligned(dna_type, min_l, max_l, median_l, sd_l, out_reads, base
             else:
                 new_read_name += "_F"
 
-            out_reads.write(id_begin + new_read_name + "_0_" + str(middle_ref) + "_0" + '\n')
+            out_reads.write(id_begin + new_read_name + "_0_" + str(middle_ref) + "_0" + '\n') # head_len = tail_len = 0
             if uracil:
-                read_mutated = read_mutated.traslate(trantab)
+                read_mutated = read_mutated.translate(trantab)
             out_reads.write(read_mutated + "\n")
 
             if fastq:
@@ -1591,11 +1591,8 @@ def simulation_unaligned(dna_type, min_l, max_l, median_l, sd_l, out_reads, base
                 out_quals = "".join([chr(qual + 33) for qual in base_quals])
                 out_reads.write(out_quals + "\n")
 
-            check_print_progress(sequence_index)
-            
-            passed += 1
-
-        remaining_reads = num_simulate - passed
+            check_print_progress(total_nb_reads)
+            remaining_reads -= 1
     out_reads.close()
 
 
@@ -1714,10 +1711,11 @@ def simulation(mode, out, dna_type, perfect, kmer_bias, basecaller, read_type, m
                 num_simulate += number_unaligned % num_threads
 
             seed += 1
+            seq_idx_prefix = "proc" + str(i) + ":"
             # Dividing number of unaligned reads that need to be simulated amongst the number of processes
             p = mp.Process(target=simulation_unaligned,
                            args=(dna_type, min_l, max_l, median_l, sd_l, unaligned_subfile,
-                                 basecaller, read_type, fastq, seed, num_simulate, uracil))
+                                 basecaller, read_type, fastq, seed, num_simulate, seq_idx_prefix, uracil))
             procs.append(p)
             p.start()
 
